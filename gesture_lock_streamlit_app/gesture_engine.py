@@ -7,8 +7,7 @@ from sklearn.neighbors import KNeighborsClassifier
 
 # Constants
 POINTS_COUNT = 40
-TOLERANCE = 0.6  # Tolerance during unlock
-CONFIRMATION_TOLERANCE = 0.3  # Tolerance during pattern confirmation
+TOLERANCE = 0.6
 TOTAL_PATTERNS = 3
 MAX_ATTEMPTS = 5
 
@@ -20,12 +19,13 @@ LOG_PATH = "unlock_attempts.log"
 logging.basicConfig(filename=LOG_PATH, level=logging.INFO,
                     format="%(asctime)s - %(message)s")
 
+
 class GestureEngine:
     def __init__(self):
         self.stage = "capture"
         self.pattern_index = 1
+        self.confirmations = []
         self.attempts = 0
-        self.confirmation = None
         self.initial_patterns = []
         self.pattern_hashes = []
         self.pattern_labels = []
@@ -71,18 +71,17 @@ class GestureEngine:
         flat = normalized.flatten()
 
         if self.stage == "capture":
-            if self.confirmation is None:
-                self.confirmation = flat
+            if len(self.confirmations) % 2 == 0:
+                self.confirmations.append(flat)
                 return f"Confirm Pattern {self.pattern_index}"
             else:
-                distance = np.mean(np.sqrt((self.confirmation - flat) ** 2))
-                if distance <= CONFIRMATION_TOLERANCE:
+                if np.allclose(self.confirmations[-1], flat, atol=0.05):
                     encrypted, hash_val = self.encrypt_and_hash(normalized)
                     self.initial_patterns.append(encrypted)
                     self.pattern_hashes.append(hash_val)
                     self.pattern_labels.append(self.pattern_index)
                     self.pattern_index += 1
-                    self.confirmation = None
+                    self.confirmations.clear()
                     if self.pattern_index > TOTAL_PATTERNS:
                         self.stage = "unlock"
                         X = [self.decrypt_pattern(p).flatten() for p in self.initial_patterns]
@@ -92,7 +91,7 @@ class GestureEngine:
                         return "All patterns saved. Draw to unlock"
                     return f"Pattern {self.pattern_index - 1} saved. Draw next"
                 else:
-                    self.confirmation = None
+                    self.confirmations.clear()
                     return f"Pattern mismatch. Redraw Pattern {self.pattern_index}"
 
         elif self.stage == "unlock":
